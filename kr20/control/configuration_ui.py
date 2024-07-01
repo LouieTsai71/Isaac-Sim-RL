@@ -75,7 +75,7 @@ class UIBuilder:
                     label = "Propagate value from other scripts",
                     text = "Test", 
                     on_click_fn=self.data_value
-                    )
+                    ) # Run button
                 self.wrapped_ui_elements.append(self._test_btn)
 
      
@@ -117,7 +117,7 @@ class UIBuilder:
         self._on_config_robot()
         # print(self._joint_path_index, self._joint_configuration_index)
         for i in range(len(self._joint_name_index)):
-           set_drive_parameters(self._joint_name_index[i], "position", self._joint_target_position_index[i])
+           set_drive_parameters(self._joint_name_index[i], "position", self._joint_target_position_index[i])  # Jonit angle to control the robot
 
     def data_value(self):
         Joint_data = 1
