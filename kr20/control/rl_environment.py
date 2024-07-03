@@ -1,63 +1,95 @@
-# rl_environment.py
-import isaacsim
 import gym
 from gym import spaces
 import numpy as np
-from pxr import UsdPhysics
-import omni.usd
-from .common import set_drive_parameters
 
-class RobotEnv(gym.Env):
+class RoboticArmEnv(gym.Env):
     def __init__(self):
-        super(RobotEnv, self).__init__()
+        super(RoboticArmEnv, self).__init__()
         
+        # Define action and observation space
+        # Actions: Continuous values representing joint commands
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32)
+        
+        # Observations: Joint angles, velocities, and end-effector position
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(21,), dtype=np.float32)
+        
+        # Define the desired path
+        self.desired_path = self.generate_desired_path()
 
-        self.stage = omni.usd.get_context().get_stage()
+        # Joint angles
+        self.joint_angles = np.zeros(6)
+
+        # Action scale
+        self.action_scale = 1
+
+    def generate_desired_path(self):
+        # Placeholder function to generate a desired path
+        path_start = np.array([1, 0, 0])  # Start point
+        path_end = np.array([2, 0, 0])   # End point
+        # Straight line
+
+        path_vector = path_end - path_start
+        path_vector /= np.linalg.norm(path_vector)
+
+        return path_vector
 
     def step(self, action):
-        self._apply_action(action)
-        self._timeline.play()
-        state = self._get_state()
-        reward = self._compute_reward(state)
-        done = self._check_done(state)
-        info = {}
-        return state, reward, done, info
-
+        # Update the new action (joint angles)
+        self.joint_angles += action * self.action_scale
+        
+        # Get the current state
+        state = self.get_state()
+        
+        # Calculate the reward
+        reward = self.calculate_reward(state)
+        
+        # Check if the episode is done
+        done = self.is_done(state)
+        
+        return state, reward, done, {}
+    
     def reset(self):
-        state = self._reset_simulation()
+        # Reset the robotic arm to the initial state (placeholder)
+        self.joint_angles = np.zeros(6)
+        
+        # Get the initial state
+        state = self.get_state()
+        
         return state
-
-    def render(self, mode='human'):
+    
+    def apply_action(self, action):
+        # Placeholder for applying action to the robotic arm
         pass
+    
+    def get_state(self):
+        # Placeholder for getting the current state of the robotic arm
+        joint_velocities = np.zeros(6) # Import from Isaac Sim
+        end_effector_pos = np.zeros(3) # Import from Isaac Sim
+        end_effector_ori = np.zeros(3) # Import from Isaac Sim
 
-    def _apply_action(self, action):
-        for i, act in enumerate(action):
-            joint_name = f"/Root/KR20/Robot/A{i+1}/node_/mesh_/R{i+1}"
-            joint = UsdPhysics.DriveAPI.Get(self.stage.GetPrimAtPath(joint_name), "angular")
-            set_drive_parameters(joint, "position", act)
+        state = np.concatenate((self.joint_angles, joint_velocities, end_effector_pos, end_effector_ori, self.desired_path))
 
-    def _get_state(self):
-        state = []
-        for i in range(6):
-            joint_name = f"/Root/KR20/Robot/A{i+1}/node_/mesh_/R{i+1}"
-            joint = UsdPhysics.DriveAPI.Get(self.stage.GetPrimAtPath(joint_name), "angular")
-            position = joint.GetTargetPositionAttr().Get()
-            velocity = joint.GetTargetVelocityAttr().Get()
-            state.extend([position, velocity])
-        return np.array(state, dtype=np.float32)
-
-    def _compute_reward(self, state):
-        reward = -np.sum(np.square(state[:6]))
+        return state
+    
+    def calculate_reward(self, state):
+        # Placeholder for calculating the reward based on the state
+        end_effector_pos = state[11:14]  # Extract end-effector position from state
+        projection_point = self.project_onto_path(end_effector_pos)
+        distance_from_path = np.linalg.norm(end_effector_pos - projection_point)
+        reward = -distance_from_path
         return reward
+    
+    def project_onto_path(self, point):
+        # Project the end-effector position onto the desired path
+        # For a straight line path, this can be a simple vector projection
+        path_start = np.array([1, 0, 0])
+        projection = path_start + np.dot(point - path_start, self.desired_path) * self.desired_path
+        return projection
+    
+    def is_done(self, state):
+        # Check if the episode is done (e.g., if the end-effector has reached the target)
+        end_effector_pos = state[11:14]
+        target_pos = np.array([2, 0, 0])
+        distance_to_target = np.linalg.norm(end_effector_pos - target_pos)
+        return distance_to_target < 0.1
 
-    def _check_done(self, state):
-        return False
-
-    def _reset_simulation(self):
-        for i in range(6):
-            joint_name = f"/Root/KR20/Robot/A{i+1}/node_/mesh_/R{i+1}"
-            joint = UsdPhysics.DriveAPI.Get(self.stage.GetPrimAtPath(joint_name), "angular")
-            set_drive_parameters(joint, "position", 0.0)
-        return self._get_state()
